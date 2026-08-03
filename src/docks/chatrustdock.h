@@ -11,6 +11,7 @@
 
 class RustPanelItem;
 class QShortcut;
+class QShowEvent;
 
 class ChatRustDock : public QDockWidget
 {
@@ -18,6 +19,12 @@ class ChatRustDock : public QDockWidget
 
 public:
     explicit ChatRustDock(QWidget *parent = 0);
+
+protected:
+    // First-dock click-dead-until-redock fix: forces one genuine resize
+    // cycle on the embedded QQuickWidget right after this dock's first
+    // real show. See the .cpp implementation for the full rationale.
+    void showEvent(QShowEvent *event) override;
 
 public slots:
     // Forwards to the embedded RustPanelItem; connected to
@@ -59,6 +66,7 @@ private:
     QShortcut *m_previousThreadShortcut = nullptr;
     QShortcut *m_nextThreadShortcut = nullptr;
     QShortcut *m_openSearchShortcut = nullptr;
+    bool m_didForceInitialResizeSync = false;
 };
 
 #endif // CHATRUSTDOCK_H

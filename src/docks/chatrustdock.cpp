@@ -5,6 +5,8 @@
 #include <QKeySequence>
 #include <QQuickWidget>
 #include <QShortcut>
+#include <QShowEvent>
+#include <QTimer>
 #include <QVBoxLayout>
 #include <QWidget>
 
@@ -76,6 +78,66 @@ ChatRustDock::ChatRustDock(QWidget *parent)
     m_openSearchShortcut->setContext(Qt::WindowShortcut);
     connect(m_openSearchShortcut, &QShortcut::activated, this,
             [this]() { invokePanelCommand(RustPanelItem::OpenThreadSearch); });
+}
+
+void ChatRustDock::showEvent(QShowEvent *event)
+{
+    QDockWidget::showEvent(event);
+
+    // First-dock click-dead-until-redock fix. Reported live on a real
+    // (non-VNC) Windows install: Settings (and likely other panel
+    // controls) don't respond to clicks the very first time this dock
+    // lands in its default startup position, but a manual float+redock
+    // fixes it immediately.
+    //
+    // This dock's *entire* initial placement --
+    // MainWindow::setupAndConnectDocks()'s addDockWidget/splitDockWidget
+    // calls, plus readWindowSettings()'s restoreState()/addDockWidget()
+    // migration dance (mainwindow.cpp) -- runs inside MainWindow's own
+    // constructor, before MainWindow is ever shown. No QResizeEvent from
+    // a real window-manager-driven layout pass has reached the embedded
+    // QQuickWidget by that point.
+    //
+    // The embedded RustPanelItem (rustpanelitem.cpp) paints correctly
+    // regardless, because paint() always re-reads this item's *current*
+    // width()/height() at paint time. But its click/hit-test geometry
+    // (and panel-rust's own internal buffer size, via ensureHandle()) is
+    // only ever recomputed reactively, through
+    // QQuickWidget::SizeRootObjectToView resizing the content item on a
+    // real QQuickWidget::resizeEvent, which then fires
+    // RustPanelItem::geometryChange(). If the QQuickWidget's first real
+    // resizeEvent never happens on its own (e.g. because Qt's dock
+    // layout finalizes this widget's geometry via a direct geometry
+    // assignment while it was still hidden, rather than a real resize
+    // transition once visible/realized), that reactive chain never runs
+    // once for real -- painting still looks right (it re-derives from
+    // current size every frame) but the click-mapping side stays stale
+    // until something else forces a genuine resize, which is exactly
+    // what a manual redock does.
+    //
+    // Fix: synthesize that same genuine resize cycle here, once,
+    // ourselves, right after this dock's first real show -- instead of
+    // relying on the user to do it by hand via redock. Deferred one event
+    // loop turn (QTimer::singleShot(0, ...)) so it runs after Qt's own
+    // post-show layout pass has settled this dock's final geometry
+    // (mirrors the same QTimer::singleShot(0, ...) deferral
+    // MainWindow::readWindowSettings() already uses for its own
+    // post-geometry resizeDocks() call).
+    if (!m_didForceInitialResizeSync) {
+        m_didForceInitialResizeSync = true;
+        QTimer::singleShot(0, this, [this]() {
+            auto *view = qobject_cast<QQuickWidget *>(widget());
+            if (!view)
+                return;
+            const QSize size = view->size();
+            if (!size.isValid() || size.isEmpty())
+                return;
+            // Round-trip through a genuinely different size so Qt cannot
+            // skip either resizeEvent as a same-size no-op.
+            view->resize(size + QSize(1, 0));
+            view->resize(size);
+        });
+    }
 }
 
 void ChatRustDock::applyTheme(const QString &theme)
