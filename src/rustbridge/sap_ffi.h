@@ -93,6 +93,7 @@ char *sap_elements_insert(void *mainWindowHandle,
                           const char *assetId,
                           int trackIndex,
                           long long position,
+                          long long durationFrames,
                           const char *mode);
 
 /* Removes the clip at (trackIndex, clipIndex) via the real

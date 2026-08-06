@@ -1029,6 +1029,7 @@ char *sap_elements_insert(void *mainWindowHandle,
                           const char *assetId,
                           int trackIndex,
                           long long position,
+                          long long durationFrames,
                           const char *mode)
 {
     auto *mw = mainWindowFromHandle(mainWindowHandle);
@@ -1039,7 +1040,7 @@ char *sap_elements_insert(void *mainWindowHandle,
     QJsonObject result;
     QMetaObject::invokeMethod(
         mw,
-        [mw, id, trackIndex, position, insertMode, &result]() {
+        [mw, id, trackIndex, position, durationFrames, insertMode, &result]() {
             const QString source = resolveElementPath(id);
             auto *timelineModel = mw->timelineDock() ? mw->timelineDock()->model() : nullptr;
             if (source.isEmpty() || !timelineModel || trackIndex < 0
@@ -1058,6 +1059,11 @@ char *sap_elements_insert(void *mainWindowHandle,
             Mlt::Producer producer(MLT.profile(), destination.toUtf8().constData());
             if (!producer.is_valid())
                 return;
+            if (durationFrames > 0 && durationFrames <= producer.get_length()) {
+                producer.set_in_and_out(0, static_cast<int>(durationFrames - 1));
+            } else if (durationFrames != -1) {
+                return;
+            }
             if (category == "sounds") {
                 producer.set("video_index", -1);
                 Mlt::Filter volume(MLT.profile(), "volume");
