@@ -31,6 +31,7 @@
 #include <QByteArray>
 #include <QColor>
 #include <QDir>
+#include <QDirIterator>
 #include <QFont>
 #include <QFile>
 #include <QFileInfo>
@@ -42,6 +43,7 @@
 #include <QScopedPointer>
 #include <QSet>
 #include <QThread>
+#include "qmltypes/qmlapplication.h"
 #include <QString>
 #include <QUndoStack>
 #include <algorithm>
@@ -841,6 +843,74 @@ char *sap_filter_add(void *mainWindowHandle,
         return nullptr;
     QJsonDocument doc(result);
     return newCString(doc.toJson(QJsonDocument::Compact));
+}
+
+char *sap_elements_search(void *mainWindowHandle,
+                          const char *query,
+                          const char *category,
+                          int offset,
+                          int limit)
+{
+    auto *mw = mainWindowFromHandle(mainWindowHandle);
+    if (!mw)
+        return nullptr;
+    const QString needle = QString::fromUtf8(query ? query : "").trimmed().toLower();
+    const QString categoryFilter = QString::fromUtf8(category ? category : "").trimmed().toLower();
+    const int safeOffset = qMax(0, offset);
+    const int safeLimit = qBound(1, limit, 100);
+    QJsonObject result;
+    QMetaObject::invokeMethod(
+        mw,
+        [needle, categoryFilter, safeOffset, safeLimit, &result]() {
+            QDir root(QmlApplication::dataDir());
+            if (!root.cd("snapflow") || !root.cd("elements"))
+                return;
+            const QStringList patterns{"*.tgs", "*.flac", "*.json", "*.rawr", "*.lot"};
+            QJsonArray matches;
+            int total = 0;
+            int emitted = 0;
+            QDirIterator it(root.absolutePath(), patterns, QDir::Files, QDirIterator::Subdirectories);
+            while (it.hasNext()) {
+                const QString path = it.next();
+                const QFileInfo info(path);
+                const QString relative = root.relativeFilePath(path);
+                const QStringList parts = relative.split('/', Qt::SkipEmptyParts);
+                if (parts.isEmpty())
+                    continue;
+                const QString assetCategory = parts.first().toLower();
+                const QString title = info.completeBaseName();
+                const QString id = relative;
+                if (!categoryFilter.isEmpty() && assetCategory != categoryFilter)
+                    continue;
+                if (!needle.isEmpty()
+                    && !title.toLower().contains(needle)
+                    && !id.toLower().contains(needle))
+                    continue;
+                ++total;
+                if (total <= safeOffset || emitted >= safeLimit)
+                    continue;
+                QJsonObject item;
+                item["id"] = id;
+                item["title"] = title;
+                item["category"] = assetCategory;
+                item["kind"] = info.suffix().toLower();
+                item["format"] = info.suffix().toLower();
+                item["sourceRef"] = id;
+                item["hasThumbnail"] = QFile::exists(info.dir().filePath(title + ".webp"));
+                item["sizeBytes"] = static_cast<qint64>(info.size());
+                matches.append(item);
+                ++emitted;
+            }
+            result["items"] = matches;
+            result["total"] = total;
+            result["offset"] = safeOffset;
+            result["limit"] = safeLimit;
+            result["nextOffset"] = (safeOffset + emitted < total) ? safeOffset + emitted : -1;
+        },
+        Qt::BlockingQueuedConnection);
+    if (result.isEmpty())
+        return nullptr;
+    return newCString(QJsonDocument(result).toJson(QJsonDocument::Compact));
 }
 
 int sap_filter_set_property(void *mainWindowHandle,

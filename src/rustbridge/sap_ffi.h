@@ -79,6 +79,16 @@ int sap_set_track_locked(void *mainWindowHandle, int trackIndex, int locked);
  * types -- video tracks can't swap with audio tracks). */
 int sap_reorder_track(void *mainWindowHandle, int fromTrackIndex, int toTrackIndex);
 
+/* Dynamically searches the installed Snapflow Elements packs. The response is
+ * a JSON object containing metadata-only `items`, `total`, `offset`, `limit`,
+ * and `nextOffset`; asset ids are pack-relative canonical ids. Returns NULL
+ * when the Elements root is unavailable. */
+char *sap_elements_search(void *mainWindowHandle,
+                          const char *query,
+                          const char *category,
+                          int offset,
+                          int limit);
+
 /* Removes the clip at (trackIndex, clipIndex) via the real
  * TimelineDock::remove() (Timeline::RemoveCommand, undoable), replacing it
  * with a blank -- the same primitive the "Ripple Delete"/Delete timeline
