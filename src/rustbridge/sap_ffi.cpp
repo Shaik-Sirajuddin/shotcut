@@ -42,6 +42,7 @@
 #include <QMetaObject>
 #include <QScopedPointer>
 #include <QSet>
+#include <QSize>
 #include <QStandardPaths>
 #include <QThread>
 #include "qmltypes/qmlapplication.h"
@@ -934,6 +935,56 @@ QString resolveElementPath(const QString &assetId)
         return {};
     return candidate;
 }
+
+void attachElementsSizeFilter(Mlt::Producer &producer, const QString &category)
+{
+    const bool autoFilter = category == "graphics" || category == "text" || category == "emojis";
+    if (!autoFilter)
+        return;
+    const int pw = MLT.profile().width();
+    const int ph = MLT.profile().height();
+    QSize mediaSize;
+    if (category == "emojis") {
+        const int side = qMin(512, qMin(pw, ph));
+        mediaSize = QSize(side, side);
+    } else {
+        const int w = producer.get_int("meta.media.width");
+        const int h = producer.get_int("meta.media.height");
+        if (w > 0 && h > 0) {
+            const QSize original(w, h);
+            mediaSize = (w > pw || h > ph) ? original.scaled(pw, ph, Qt::KeepAspectRatio) : original;
+        }
+    }
+    const char *service = Settings.playerGPU() ? "movit.rect" : "affine";
+    const char *filterName = Settings.playerGPU() ? "movitSizePosition" : "affineSizePosition";
+    Mlt::Filter filter(MLT.profile(), service);
+    if (!filter.is_valid())
+        return;
+    const QString rect = mediaSize.isValid()
+                             ? QStringLiteral("%1 %2 %3 %4 1.0")
+                                   .arg((pw - mediaSize.width()) / 2)
+                                   .arg((ph - mediaSize.height()) / 2)
+                                   .arg(mediaSize.width())
+                                   .arg(mediaSize.height())
+                             : QStringLiteral("0 0 %1 %2 1.0").arg(pw).arg(ph);
+    if (Settings.playerGPU()) {
+        filter.set("rect", rect.toUtf8().constData());
+        filter.set("fill", 1);
+        filter.set("distort", 0);
+        filter.set("valign", "middle");
+        filter.set("halign", "center");
+    } else {
+        filter.set("transition.rect", rect.toUtf8().constData());
+        filter.set("transition.fill", 1);
+        filter.set("transition.distort", 0);
+        filter.set("transition.valign", "middle");
+        filter.set("transition.halign", "center");
+        filter.set("transition.threads", 0);
+        filter.set("background", "color:#00000000");
+    }
+    filter.set(kSnapflowFilterProperty, filterName);
+    producer.attach(filter);
+}
 }
 
 char *sap_elements_describe(void *mainWindowHandle, const char *assetId, int includeContent)
@@ -956,6 +1007,12 @@ char *sap_elements_describe(void *mainWindowHandle, const char *assetId, int inc
             result["sizeBytes"] = static_cast<qint64>(info.size());
             result["lastModified"] = info.lastModified().toUTC().toString(Qt::ISODate);
             result["hasThumbnail"] = QFile::exists(info.dir().filePath(info.completeBaseName() + ".webp"));
+            Mlt::Producer producer(MLT.profile(), path.toUtf8().constData());
+            if (producer.is_valid()) {
+                result["width"] = producer.get_int("meta.media.width");
+                result["height"] = producer.get_int("meta.media.height");
+                result["durationFrames"] = producer.get_length();
+            }
             if (includeContent && info.size() <= 4 * 1024 * 1024) {
                 QFile file(path);
                 if (file.open(QIODevice::ReadOnly))
@@ -999,6 +1056,17 @@ char *sap_elements_insert(void *mainWindowHandle,
             Mlt::Producer producer(MLT.profile(), destination.toUtf8().constData());
             if (!producer.is_valid())
                 return;
+            if (category == "sounds") {
+                producer.set("video_index", -1);
+                Mlt::Filter volume(MLT.profile(), "volume");
+                if (volume.is_valid()) {
+                    volume.set("level", 0.0);
+                    volume.set(kSnapflowFilterProperty, "audioGain");
+                    producer.attach(volume);
+                }
+            } else {
+                attachElementsSizeFilter(producer, category);
+            }
             int clipIndex = -1;
             if (insertMode == "overwrite")
                 clipIndex = mw->multitrack()->overwriteClip(trackIndex, producer, qMax(0LL, position), false);
