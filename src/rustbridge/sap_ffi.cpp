@@ -1053,11 +1053,10 @@ char *sap_elements_insert(void *mainWindowHandle,
             const QString projectRoot = MAIN.fileName().isEmpty()
                                             ? QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation)
                                             : QFileInfo(MAIN.fileName()).absolutePath();
-            const QFileInfo sourceInfo(source);
             const QString category = id.section('/', 0, 0);
-            const QString destinationDir = QDir(projectRoot).filePath("elements/" + category);
+            const QString destination = QDir(projectRoot).filePath("elements/" + id);
+            const QString destinationDir = QFileInfo(destination).absolutePath();
             QDir().mkpath(destinationDir);
-            QString destination = QDir(destinationDir).filePath(sourceInfo.fileName());
             if (!QFile::exists(destination) && !QFile::copy(source, destination))
                 return;
             Mlt::Producer producer(MLT.profile(), destination.toUtf8().constData());
