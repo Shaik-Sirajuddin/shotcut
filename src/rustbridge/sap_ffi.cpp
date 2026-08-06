@@ -907,7 +907,8 @@ char *sap_elements_search(void *mainWindowHandle,
             result["total"] = total;
             result["offset"] = safeOffset;
             result["limit"] = safeLimit;
-            result["nextOffset"] = (safeOffset + emitted < total) ? safeOffset + emitted : -1;
+            if (safeOffset + emitted < total)
+                result["nextOffset"] = safeOffset + emitted;
         },
         Qt::BlockingQueuedConnection);
     if (result.isEmpty())
@@ -1001,7 +1002,10 @@ char *sap_elements_describe(void *mainWindowHandle, const char *assetId, int inc
             if (path.isEmpty())
                 return;
             const QFileInfo info(path);
-            result["id"] = elementsRoot().relativeFilePath(path);
+            // Preserve the canonical, server-owned id supplied by search.
+            // Computing a relative path from the resolved filesystem path
+            // breaks when the packaged elements directory is a symlink.
+            result["id"] = id;
             result["title"] = info.completeBaseName();
             result["format"] = info.suffix().toLower();
             result["sizeBytes"] = static_cast<qint64>(info.size());
