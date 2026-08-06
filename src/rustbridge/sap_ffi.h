@@ -88,6 +88,12 @@ char *sap_elements_search(void *mainWindowHandle,
                           const char *category,
                           int offset,
                           int limit);
+char *sap_elements_describe(void *mainWindowHandle, const char *assetId, int includeContent);
+char *sap_elements_insert(void *mainWindowHandle,
+                          const char *assetId,
+                          int trackIndex,
+                          long long position,
+                          const char *mode);
 
 /* Removes the clip at (trackIndex, clipIndex) via the real
  * TimelineDock::remove() (Timeline::RemoveCommand, undoable), replacing it

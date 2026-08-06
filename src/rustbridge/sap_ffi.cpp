@@ -42,6 +42,7 @@
 #include <QMetaObject>
 #include <QScopedPointer>
 #include <QSet>
+#include <QStandardPaths>
 #include <QThread>
 #include "qmltypes/qmlapplication.h"
 #include <QString>
@@ -906,6 +907,112 @@ char *sap_elements_search(void *mainWindowHandle,
             result["offset"] = safeOffset;
             result["limit"] = safeLimit;
             result["nextOffset"] = (safeOffset + emitted < total) ? safeOffset + emitted : -1;
+        },
+        Qt::BlockingQueuedConnection);
+    if (result.isEmpty())
+        return nullptr;
+    return newCString(QJsonDocument(result).toJson(QJsonDocument::Compact));
+}
+
+namespace {
+QDir elementsRoot()
+{
+    QDir root(QmlApplication::dataDir());
+    root.cd("snapflow");
+    root.cd("elements");
+    return root;
+}
+
+QString resolveElementPath(const QString &assetId)
+{
+    const QDir root = elementsRoot();
+    const QString candidate = QFileInfo(root, assetId).canonicalFilePath();
+    const QString rootPath = root.canonicalPath();
+    if (candidate.isEmpty() || rootPath.isEmpty()
+        || !candidate.startsWith(rootPath + QDir::separator())
+        || !QFileInfo::exists(candidate))
+        return {};
+    return candidate;
+}
+}
+
+char *sap_elements_describe(void *mainWindowHandle, const char *assetId, int includeContent)
+{
+    auto *mw = mainWindowFromHandle(mainWindowHandle);
+    if (!mw || !assetId)
+        return nullptr;
+    const QString id = QString::fromUtf8(assetId);
+    QJsonObject result;
+    QMetaObject::invokeMethod(
+        mw,
+        [id, includeContent, &result]() {
+            const QString path = resolveElementPath(id);
+            if (path.isEmpty())
+                return;
+            const QFileInfo info(path);
+            result["id"] = elementsRoot().relativeFilePath(path);
+            result["title"] = info.completeBaseName();
+            result["format"] = info.suffix().toLower();
+            result["sizeBytes"] = static_cast<qint64>(info.size());
+            result["lastModified"] = info.lastModified().toUTC().toString(Qt::ISODate);
+            result["hasThumbnail"] = QFile::exists(info.dir().filePath(info.completeBaseName() + ".webp"));
+            if (includeContent && info.size() <= 4 * 1024 * 1024) {
+                QFile file(path);
+                if (file.open(QIODevice::ReadOnly))
+                    result["content"] = QString::fromUtf8(file.readAll());
+            }
+        },
+        Qt::BlockingQueuedConnection);
+    if (result.isEmpty())
+        return nullptr;
+    return newCString(QJsonDocument(result).toJson(QJsonDocument::Compact));
+}
+
+char *sap_elements_insert(void *mainWindowHandle,
+                          const char *assetId,
+                          int trackIndex,
+                          long long position,
+                          const char *mode)
+{
+    auto *mw = mainWindowFromHandle(mainWindowHandle);
+    if (!mw || !assetId || !mw->isMultitrackValid())
+        return nullptr;
+    const QString id = QString::fromUtf8(assetId);
+    const QString insertMode = QString::fromUtf8(mode ? mode : "insert").toLower();
+    QJsonObject result;
+    QMetaObject::invokeMethod(
+        mw,
+        [mw, id, trackIndex, position, insertMode, &result]() {
+            const QString source = resolveElementPath(id);
+            if (source.isEmpty() || trackIndex < 0 || trackIndex >= mw->multitrack()->trackList().size())
+                return;
+            const QString projectRoot = MAIN.fileName().isEmpty()
+                                            ? QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation)
+                                            : QFileInfo(MAIN.fileName()).absolutePath();
+            const QFileInfo sourceInfo(source);
+            const QString category = id.section('/', 0, 0);
+            const QString destinationDir = QDir(projectRoot).filePath("elements/" + category);
+            QDir().mkpath(destinationDir);
+            QString destination = QDir(destinationDir).filePath(sourceInfo.fileName());
+            if (!QFile::exists(destination) && !QFile::copy(source, destination))
+                return;
+            Mlt::Producer producer(MLT.profile(), destination.toUtf8().constData());
+            if (!producer.is_valid())
+                return;
+            int clipIndex = -1;
+            if (insertMode == "overwrite")
+                clipIndex = mw->multitrack()->overwriteClip(trackIndex, producer, qMax(0LL, position), false);
+            else
+                clipIndex = mw->multitrack()->insertClip(trackIndex, producer, qMax(0LL, position), false, false, true);
+            if (clipIndex < 0)
+                return;
+            syncTimelineProducer(mw);
+            result["assetId"] = id;
+            result["trackIndex"] = trackIndex;
+            result["clipIndex"] = clipIndex;
+            result["clipId"] = QStringLiteral("t%1c%2").arg(trackIndex).arg(clipIndex);
+            result["path"] = destination;
+            result["mode"] = insertMode;
         },
         Qt::BlockingQueuedConnection);
     if (result.isEmpty())
