@@ -1041,7 +1041,9 @@ char *sap_elements_insert(void *mainWindowHandle,
         mw,
         [mw, id, trackIndex, position, insertMode, &result]() {
             const QString source = resolveElementPath(id);
-            if (source.isEmpty() || trackIndex < 0 || trackIndex >= mw->multitrack()->trackList().size())
+            auto *timelineModel = mw->timelineDock() ? mw->timelineDock()->model() : nullptr;
+            if (source.isEmpty() || !timelineModel || trackIndex < 0
+                || trackIndex >= timelineModel->trackList().size())
                 return;
             const QString projectRoot = MAIN.fileName().isEmpty()
                                             ? QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation)
@@ -1069,9 +1071,9 @@ char *sap_elements_insert(void *mainWindowHandle,
             }
             int clipIndex = -1;
             if (insertMode == "overwrite")
-                clipIndex = mw->multitrack()->overwriteClip(trackIndex, producer, qMax(0LL, position), false);
+                clipIndex = timelineModel->overwriteClip(trackIndex, producer, qMax(0LL, position), false);
             else
-                clipIndex = mw->multitrack()->insertClip(trackIndex, producer, qMax(0LL, position), false, false, true);
+                clipIndex = timelineModel->insertClip(trackIndex, producer, qMax(0LL, position), false, false, true);
             if (clipIndex < 0)
                 return;
             syncTimelineProducer(mw);
