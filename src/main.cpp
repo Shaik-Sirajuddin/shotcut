@@ -55,10 +55,12 @@
 // children. The Windows bundle places the executable, plugins, data, and
 // profiles below Snapflow/; setting these before any MainWindow/MLT object is
 // constructed prevents MLT from resolving against the daemon install root.
+// Keep the mlt-7 suffix: Windows relocatable MLT derives its repository from
+// libmlt-7.dll and ignores MLT_REPOSITORY for that lookup.
 static void configureBundledMltPaths(const QString &appPath)
 {
-    const QString repository = QDir(appPath).filePath(QStringLiteral("lib/mlt"));
-    const QString data = QDir(appPath).filePath(QStringLiteral("share/mlt"));
+    const QString repository = QDir(appPath).filePath(QStringLiteral("lib/mlt-7"));
+    const QString data = QDir(appPath).filePath(QStringLiteral("share/mlt-7"));
     const QString profiles = QDir(data).filePath(QStringLiteral("profiles"));
     if (QFileInfo(repository).isDir() && QFileInfo(data).isDir()) {
         qputenv("MLT_REPOSITORY", repository.toLocal8Bit());
