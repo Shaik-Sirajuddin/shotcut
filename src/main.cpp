@@ -51,16 +51,15 @@
 #endif
 
 #ifdef Q_OS_WIN
-// Keep native Qt launches on the same app-local MLT prefix as daemon-launched
-// children. The Windows bundle places the executable, plugins, data, and
-// profiles below Snapflow/; setting these before any MainWindow/MLT object is
-// constructed prevents MLT from resolving against the daemon install root.
-// Keep the mlt-7 suffix: Windows relocatable MLT derives its repository from
-// libmlt-7.dll and ignores MLT_REPOSITORY for that lookup.
+// Keep native Qt launches on the same root-level MLT prefix as daemon-launched
+// children. Production Windows bundles place lib/mlt and share/mlt beside
+// Snapflow/; set these before any MainWindow/MLT object is constructed.
 static void configureBundledMltPaths(const QString &appPath)
 {
-    const QString repository = QDir(appPath).filePath(QStringLiteral("lib/mlt-7"));
-    const QString data = QDir(appPath).filePath(QStringLiteral("share/mlt-7"));
+    QDir installRoot(appPath);
+    installRoot.cdUp();
+    const QString repository = installRoot.filePath(QStringLiteral("lib/mlt"));
+    const QString data = installRoot.filePath(QStringLiteral("share/mlt"));
     const QString profiles = QDir(data).filePath(QStringLiteral("profiles"));
     if (QFileInfo(repository).isDir() && QFileInfo(data).isDir()) {
         qputenv("MLT_REPOSITORY", repository.toLocal8Bit());
