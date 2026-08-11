@@ -56,14 +56,6 @@
 // Snapflow/; set these before any MainWindow/MLT object is constructed.
 static void configureBundledMltPaths(const QString &appPath)
 {
-    // MLT modules live in the install-root repository, while their FFmpeg,
-    // audio, and filter DLLs live beside Snapflow.exe.  Make that executable
-    // directory an explicit dependency search location before the first MLT
-    // factory is constructed.  This is required when a module is loaded from
-    // <install-root>/lib/mlt rather than from the executable directory.
-    const QByteArray appPathBytes = QDir::toNativeSeparators(appPath).toLocal8Bit();
-    SetDllDirectoryA(appPathBytes.constData());
-
     QDir installRoot(appPath);
     installRoot.cdUp();
     const QString repository = installRoot.filePath(QStringLiteral("lib/mlt"));
