@@ -9,6 +9,8 @@
 
 #include "sap_ffi.h"
 
+#include "Logger.h"
+
 #include "commands/timelinecommands.h"
 #include "docks/timelinedock.h"
 #include "docks/playlistdock.h"
