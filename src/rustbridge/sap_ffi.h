@@ -410,7 +410,8 @@ int sap_save_project(void *mainWindowHandle);
 
 /* Binds this session's "current file" (MainWindow::fileName(), what
  * sap_save_project saves to) to filename, without opening/loading
- * anything from disk -- see MainWindow::setSapProjectFile's doc comment.
+ * or loads and validates an existing project -- see
+ * MainWindow::setSapProjectFile's doc comment.
  * Intended to be called once, right after launch, with
  * <projectRoot>/<mltFileName> (per 09-project-folder-layout.md), so
  * project.save persists to the real project folder instead of

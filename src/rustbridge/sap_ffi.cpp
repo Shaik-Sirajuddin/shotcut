@@ -1576,6 +1576,31 @@ int sap_save_project(void *mainWindowHandle)
             QString filename = mw->fileName();
             if (filename.isEmpty())
                 filename = mw->untitledFileName();
+
+            // Never save a producer under a path that belongs to another
+            // project.  This is especially important for the headless SAP
+            // bridge: set_file changes the routing identity, while the MLT
+            // producer is the actual in-memory project.
+            const auto normalized = [](const QString &path) {
+                return QDir::cleanPath(QFileInfo(path).absoluteFilePath());
+            };
+            if (mw->fileName().isEmpty() || normalized(mw->fileName()) != normalized(filename)) {
+                LOG_ERROR() << "sap save refused: no concrete project filename";
+                result = -1;
+                return;
+            }
+            if (!MLT.URL().isEmpty() && normalized(MLT.URL()) != normalized(filename)) {
+                LOG_ERROR() << "sap save refused: loaded project does not match filename"
+                            << MLT.URL() << filename;
+                result = -1;
+                return;
+            }
+            if ((mw->isMultitrackValid() || mw->isPlaylistValid())
+                && (!MLT.producer() || !MLT.producer()->is_valid())) {
+                LOG_ERROR() << "sap save refused: timeline/model has no valid MLT producer";
+                result = -1;
+                return;
+            }
             result = mw->saveXML(filename) ? 0 : -1;
         },
         Qt::BlockingQueuedConnection);
@@ -1588,9 +1613,11 @@ int sap_set_project_file(void *mainWindowHandle, const char *filename)
     if (!mw || !filename || !*filename)
         return -1;
     const QString path = QString::fromUtf8(filename);
+    int result = -1;
     QMetaObject::invokeMethod(
-        mw, [mw, path]() { mw->setSapProjectFile(path); }, Qt::BlockingQueuedConnection);
-    return 0;
+        mw, [mw, path, &result]() { result = mw->setSapProjectFile(path) ? 0 : -1; },
+        Qt::BlockingQueuedConnection);
+    return result;
 }
 
 int sap_open_project(void *mainWindowHandle, const char *path)

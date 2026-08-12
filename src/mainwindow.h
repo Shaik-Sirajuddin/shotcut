@@ -92,15 +92,10 @@ public:
     QString untitledFileName() const;
     void setProfile(const QString &profile_name);
     QString fileName() const { return m_currentFile; }
-    // Headless SAP path only (sap_ffi.cpp's sap_set_project_file): binds
-    // this session's "current file" to a real path (normally
-    // <projectRoot>/project.mlt, per 09-project-folder-layout.md) without
-    // opening/loading anything from it -- there is nothing on disk yet on
-    // a brand-new project. Exists so `project.save` (saveXML(fileName()))
-    // and the window title resolve against the real project folder
-    // instead of `untitledFileName()`'s scratch default. `setCurrentFile`
-    // itself is private; this just exposes it for that one FFI call site.
-    void setSapProjectFile(const QString &filename) { setCurrentFile(filename); }
+    // Headless SAP path only: bind a new project's save path, or load and
+    // validate an existing project at that path. Existing projects must not
+    // be retargeted while an unrelated producer remains in memory.
+    bool setSapProjectFile(const QString &filename);
     // Headless SAP path only (sap_ffi.cpp's sap_open_project): load an
     // existing .mlt without continueModified()/checkAutoSave()/repair/
     // GPU-conversion modal dialogs. Safe for a freshly-launched child

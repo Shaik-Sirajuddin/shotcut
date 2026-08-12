@@ -120,6 +120,7 @@
 #include <QtWidgets>
 
 #include <algorithm>
+#include <memory>
 
 #define SNAPFLOW_THEME
 
@@ -155,6 +156,14 @@ static constexpr int AUTOSAVE_TIMEOUT_MS = 60000;
 static constexpr int kDockLayoutVersion = 5;
 static constexpr char kReservedLayoutPrefix[] = "__%1";
 static constexpr char kLayoutSwitcherName[] = "layoutSwitcherGrid";
+
+class ProjectTeardownGuard
+{
+public:
+    ProjectTeardownGuard() { sap_ffi_begin_project_teardown(); }
+    ~ProjectTeardownGuard() { sap_ffi_end_project_teardown(); }
+    Q_DISABLE_COPY(ProjectTeardownGuard)
+};
 
 // AI is in a staged rollout. Keep the native entry points hidden unless an
 // operator explicitly opts in with SNAPFLOW_DISABLE_AI_MODE=0/false/no.
@@ -2511,12 +2520,24 @@ bool MainWindow::openForSap(const QString &url)
     return ok;
 }
 
+bool MainWindow::setSapProjectFile(const QString &filename)
+{
+    const QFileInfo info(filename);
+    if (!info.isAbsolute() || info.fileName().isEmpty())
+        return false;
+    if (info.exists())
+        return openForSap(info.absoluteFilePath());
+    setCurrentFile(info.absoluteFilePath());
+    return true;
+}
+
 bool MainWindow::open(QString url, const Mlt::Properties *properties, bool play, bool skipConvert)
 {
     // returns false when MLT is unable to open the file, possibly because it has percent sign in the path
     LOG_DEBUG() << url;
     bool modified = false;
     bool converted = false;
+    std::unique_ptr<ProjectTeardownGuard> teardownGuard;
     MltXmlChecker checker;
     QFileInfo info(url);
 
@@ -2534,43 +2555,55 @@ bool MainWindow::open(QString url, const Mlt::Properties *properties, bool play,
         case QXmlStreamReader::NoError:
             if (!isCompatibleWithProcessingMode(checker, url, converted)) {
                 showStatusMessage(tr("Failed to open ").append(url));
-                return true;
+                return false;
             }
             break;
         case QXmlStreamReader::CustomError:
             showIncompatibleProjectMessage(checker.snapflowVersion());
-            return true;
+            return false;
         default:
             showStatusMessage(tr("Failed to open ").append(url));
-            return true;
+            return false;
         }
         // only check for a modified project when loading a project, not a simple producer
         if (!continueModified())
-            return true;
-        QCoreApplication::processEvents();
-        // close existing project
-        if (playlist()) {
-            m_playlistDock->model()->close();
-        }
-        if (multitrack()) {
-            m_timelineDock->model()->close();
-        }
-        MLT.purgeMemoryPool();
+            return false;
         if (!isXmlRepaired(checker, url))
-            return true;
+            return false;
         modified = checkAutoSave(url);
         if (modified) {
             if (checker.check(url) == QXmlStreamReader::NoError) {
                 if (!isCompatibleWithProcessingMode(checker, url, converted))
-                    return true;
+                    return false;
             } else {
                 showStatusMessage(tr("Failed to open ").append(url));
                 showIncompatibleProjectMessage(checker.snapflowVersion());
-                return true;
+                return false;
             }
             if (!isXmlRepaired(checker, url))
-                return true;
+                return false;
         }
+        // Validate every failure-prone part of the candidate before tearing
+        // down the current project. Controller::open() performs the real
+        // swap later, but this probe keeps malformed XML/load failures from
+        // destroying a working project first.
+        const QString candidateUrl = checker.isUpdated() ? checker.tempFile().fileName() : url;
+        const QString encodedCandidate = QUrl::toPercentEncoding(candidateUrl);
+        Mlt::Producer probe(MLT.profile(), encodedCandidate.toUtf8().constData());
+        if (!probe.is_valid()) {
+            showStatusMessage(tr("Failed to open ").append(url));
+            emit openFailed(url);
+            return false;
+        }
+        QCoreApplication::processEvents();
+        teardownGuard = std::make_unique<ProjectTeardownGuard>();
+        // All candidate validation is complete. From this point to the end
+        // of open(), SAP calls are fenced while the old models are replaced.
+        if (playlist())
+            m_playlistDock->model()->close();
+        if (multitrack())
+            m_timelineDock->model()->close();
+        MLT.purgeMemoryPool();
         // let the new project change the profile
         if (modified || QFile::exists(url)) {
             MLT.profile().set_explicit(false);
@@ -2580,7 +2613,7 @@ bool MainWindow::open(QString url, const Mlt::Properties *properties, bool play,
     }
     if (!playlist() && !multitrack()) {
         if (!modified && !continueModified())
-            return true;
+            return false;
         setCurrentFile("");
         setWindowModified(modified);
         sourceUpdated();
