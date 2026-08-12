@@ -1585,19 +1585,19 @@ int sap_save_project(void *mainWindowHandle)
                 return QDir::cleanPath(QFileInfo(path).absoluteFilePath());
             };
             if (mw->fileName().isEmpty() || normalized(mw->fileName()) != normalized(filename)) {
-                LOG_ERROR() << "sap save refused: no concrete project filename";
+                LOG_WARNING() << "sap save refused: no concrete project filename";
                 result = -1;
                 return;
             }
             if (!MLT.URL().isEmpty() && normalized(MLT.URL()) != normalized(filename)) {
-                LOG_ERROR() << "sap save refused: loaded project does not match filename"
+                LOG_WARNING() << "sap save refused: loaded project does not match filename"
                             << MLT.URL() << filename;
                 result = -1;
                 return;
             }
             if ((mw->isMultitrackValid() || mw->isPlaylistValid())
                 && (!MLT.producer() || !MLT.producer()->is_valid())) {
-                LOG_ERROR() << "sap save refused: timeline/model has no valid MLT producer";
+                LOG_WARNING() << "sap save refused: timeline/model has no valid MLT producer";
                 result = -1;
                 return;
             }
