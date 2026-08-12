@@ -458,6 +458,14 @@ int main(int argc, char **argv)
 #ifndef QT_DEBUG
     ::qputenv("QT_LOGGING_RULES", "*.warning=false");
 #endif
+    // Keep the AI rollout switch consistent across the Qt host, panel-rust,
+    // and any daemon-managed children. Disabled is the safe default; an
+    // explicit 0/false/no remains an operator opt-in. This must be set before
+    // MainWindow constructs ChatRustDock, because panel creation itself can
+    // provision ACPX and restore provider links even when the dock is later
+    // hidden by the layout guard.
+    if (!qEnvironmentVariableIsSet("SNAPFLOW_DISABLE_AI_MODE"))
+        ::qputenv("SNAPFLOW_DISABLE_AI_MODE", "1");
     // ChatRustDock (panel-rust, Slint) keeps its whole UI state on a single
     // thread_local singleton -- Qt Quick's default threaded render loop
     // calls paint() on a different OS thread than input dispatch, which
